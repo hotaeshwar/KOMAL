@@ -91,6 +91,8 @@ const BusinessCard = () => {
       <circle cx="4" cy="4" r="2"/>
     </svg>
   );
+
+  const ShareIcon = ({ size = 20, color = "#ffffff" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
       <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
       <polyline points="16 6 12 2 8 6"/>
