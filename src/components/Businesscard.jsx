@@ -14,6 +14,7 @@ const BusinessCard = () => {
     facebook: '',
     instagram: '',
     whatsapp: '',
+    linkedin: '',
     socialMedia: {
       linkedin: '',
       twitter: '',
@@ -83,7 +84,13 @@ const BusinessCard = () => {
     </svg>
   );
 
-  const ShareIcon = ({ size = 20, color = "#ffffff" }) => (
+  const LinkedInIcon = ({ size = 20, color = "#ffffff" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+      <rect x="2" y="9" width="4" height="12"/>
+      <circle cx="4" cy="4" r="2"/>
+    </svg>
+  );
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
       <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
       <polyline points="16 6 12 2 8 6"/>
@@ -152,6 +159,7 @@ const BusinessCard = () => {
       (formData.facebook ? `URL;TYPE=Facebook:${formData.facebook}\n` : '') +
       (formData.instagram ? `URL;TYPE=Instagram:${formData.instagram}\n` : '') +
       (cleanWhatsApp ? `TEL;TYPE=WhatsApp:${cleanWhatsApp}\n` : '') +
+      (formData.linkedin ? `URL;TYPE=LinkedIn:${formData.linkedin}\n` : '') +
       'END:VCARD'
     );
   };
@@ -483,6 +491,7 @@ const BusinessCard = () => {
       ${formData.facebook ? `<a href="${formData.facebook}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></div><div><div class="contact-label">Facebook</div><div class="contact-value">Visit Facebook</div></div></a>` : ''}
       ${formData.instagram ? `<a href="${formData.instagram}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></div><div><div class="contact-label">Instagram</div><div class="contact-value">Visit Instagram</div></div></a>` : ''}
       ${formData.whatsapp ? `<a href="https://wa.me/${formData.whatsapp}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div><div><div class="contact-label">WhatsApp</div><div class="contact-value">Chat on WhatsApp</div></div></a>` : ''}
+      ${formData.linkedin ? `<a href="${formData.linkedin}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg></div><div><div class="contact-label">LinkedIn</div><div class="contact-value">Visit LinkedIn</div></div></a>` : ''}
     </div>
     <div class="qr-section">
       <div class="qr-title">✨ Scan to Save Contact</div>
@@ -608,6 +617,7 @@ const BusinessCard = () => {
                   { label: 'Facebook URL', field: 'facebook', placeholder: 'https://facebook.com/yourprofile' },
                   { label: 'Instagram URL', field: 'instagram', placeholder: 'https://instagram.com/yourprofile' },
                   { label: 'WhatsApp Number', field: 'whatsapp', placeholder: 'Enter WhatsApp number' },
+                  { label: 'LinkedIn URL', field: 'linkedin', placeholder: 'https://linkedin.com/in/yourprofile' },
                 ].map(({ label, field, placeholder }) => (
                   <div key={field}>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -729,8 +739,19 @@ const BusinessCard = () => {
                 </div>
               </a>
             )}
+            {formData.linkedin && (
+              <a href={formData.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
+                  <LinkedInIcon size={16} color="#fff" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>LinkedIn</div>
+                  <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>Visit LinkedIn</div>
+                </div>
+              </a>
+            )}
             {!formData.phone && !formData.mapLink && !formData.facebook &&
-             !formData.instagram && !formData.whatsapp && (
+             !formData.instagram && !formData.whatsapp && !formData.linkedin && (
               <div className="text-center py-4 text-gray-400">
                 <p className="text-sm">Click Edit to add your contact information</p>
               </div>
