@@ -510,14 +510,44 @@ const BusinessCard = () => {
         new QRious({ element: document.getElementById('qr-code'), value: \`${vCardData}\`, size: 200, background: 'white', foreground: '${colors.primary}', level: 'M' });
       }
     });
-    function saveContact() {
-      const blob = new Blob([\`${vCardData}\`], { type: 'text/vcard' });
+    async function saveContact() {
+      const vcfData = \`${vCardData}\`;
+      const blob = new Blob([vcfData], { type: 'text/vcard' });
+      const fileName = '${formData.name.replace(/\s+/g, '_')}_Contact.vcf';
+
+      // Try Web Share API first — triggers native "Add to Contacts" on iOS/Android
+      if (navigator.share && navigator.canShare) {
+        const file = new File([blob], fileName, { type: 'text/vcard' });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              title: '${formData.name}',
+              files: [file]
+            });
+            return;
+          } catch (err) {
+            // User cancelled or share failed — fall through to direct open
+            if (err.name === 'AbortError') return;
+          }
+        }
+      }
+
+      // On iOS Safari: open the vcf URL directly — iOS will prompt "Add to Contacts"
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = '${formData.name.replace(/\s+/g, '_')}_Contact.vcf';
-      a.click();
-      URL.revokeObjectURL(url);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        window.location.href = url;
+      } else {
+        // Android / Desktop fallback: open in new tab which triggers native handler
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        // No .download attribute — lets the OS handle the .vcf natively
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
     }
   </script>
 </body>
