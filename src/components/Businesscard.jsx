@@ -38,12 +38,12 @@ const BusinessCard = () => {
 
   // Influencer color scheme: rose, coral, fuchsia, purple
   const colors = {
-    primary: '#E91E8C',        // Hot pink
-    primaryLight: '#FF6EC7',   // Light pink
-    primaryDark: '#C2185B',    // Deep rose
-    accent: '#9C27B0',         // Purple
-    accentLight: '#CE93D8',    // Light purple
-    coral: '#FF6B6B',          // Coral
+    primary: '#E91E8C',
+    primaryLight: '#FF6EC7',
+    primaryDark: '#C2185B',
+    accent: '#9C27B0',
+    accentLight: '#CE93D8',
+    coral: '#FF6B6B',
     background: '#ffffff',
     text: '#1a1a2e',
     textMuted: '#7b6f8a',
@@ -113,11 +113,16 @@ const BusinessCard = () => {
     </svg>
   );
 
+  // FIX: getImageSource now properly handles base64 strings saved from Firestore
   const getImageSource = (imageData) => {
     if (!imageData) return publicImagePath;
     if (typeof imageData === 'string') {
-      if (imageData.startsWith('data:') || imageData.startsWith('http')) return imageData;
-      return publicImagePath;
+      // base64 data URL (uploaded by user and saved to Firestore)
+      if (imageData.startsWith('data:')) return imageData;
+      // external URL
+      if (imageData.startsWith('http')) return imageData;
+      // local public path
+      if (imageData.startsWith('/')) return imageData;
     }
     return publicImagePath;
   };
@@ -185,6 +190,7 @@ const BusinessCard = () => {
 
   useEffect(() => { if (window.QRious) generateQRCode(); }, [formData, colors.primary]);
 
+  // FIX: On load, restore photo from Firestore — including base64 if it was saved
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -192,10 +198,15 @@ const BusinessCard = () => {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setFormData({ ...data, photo: publicImagePath });
+          // Restore saved photo (base64 or default path)
+          const savedPhoto = data.photo && data.photo.startsWith('data:')
+            ? data.photo
+            : publicImagePath;
+          setFormData({ ...data, photo: savedPhoto });
           showNotification('Data loaded successfully!', 'success');
         } else {
-          await setDoc(docRef, { ...formData, photo: 'default' });
+          const initialData = { ...formData, photo: 'default' };
+          await setDoc(docRef, initialData);
           showNotification('Initial data saved!', 'success');
         }
       } catch (error) {
@@ -214,16 +225,29 @@ const BusinessCard = () => {
   const openEditModal = () => { setTempFormData({ ...formData }); setIsEditModalOpen(true); };
   const closeEditModal = () => { setIsEditModalOpen(false); setTempFormData({}); };
 
+  // FIX: Save actual photo data (base64 string) to Firestore instead of placeholder string
   const handleSaveEdit = async () => {
     setSaving(true);
     try {
-      const dataToSave = { ...tempFormData, photo: 'user-uploaded' };
+      // Determine what photo string to persist
+      // If it's a base64 data URL, save it directly to Firestore
+      // If it's a local path or default, save that path string
+      const photoToSave = tempFormData.photo && tempFormData.photo.startsWith('data:')
+        ? tempFormData.photo   // actual base64 — persists across refreshes
+        : (tempFormData.photo || 'default');
+
+      const dataToSave = { ...tempFormData, photo: photoToSave };
       const docRef = doc(db, 'businessCards', 'komalDhawan');
       await setDoc(docRef, dataToSave);
-      setFormData(tempFormData);
+
+      // Update local state with the saved data, resolving photo display correctly
+      const displayPhoto = photoToSave.startsWith('data:') ? photoToSave : publicImagePath;
+      setFormData({ ...tempFormData, photo: displayPhoto });
+
       closeEditModal();
       showNotification('Profile updated and saved to cloud!', 'success');
     } catch (error) {
+      console.error('Save error:', error);
       showNotification('Error saving data to cloud', 'error');
     } finally {
       setSaving(false);
@@ -238,6 +262,7 @@ const BusinessCard = () => {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
+      // FIX: Store full base64 data URL in tempFormData so it gets saved to Firestore
       reader.onload = (e) => setTempFormData(prev => ({ ...prev, photo: e.target.result }));
       reader.readAsDataURL(file);
     }
@@ -520,7 +545,6 @@ const BusinessCard = () => {
     }
   };
 
-  // Gradient style for influencer theme
   const gradientStyle = {
     background: 'linear-gradient(135deg, #E91E8C 0%, #9C27B0 60%, #FF6B6B 100%)'
   };
@@ -627,7 +651,6 @@ const BusinessCard = () => {
 
           {/* Header */}
           <div className="px-4 sm:px-5 py-6 sm:py-8 text-center relative overflow-hidden bg-white">
-            {/* Subtle decorative top bar */}
             <div className="absolute top-0 left-0 right-0 h-1" style={gradientStyle} />
             <div className="relative mb-3 inline-block">
               <img
