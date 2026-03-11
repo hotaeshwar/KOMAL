@@ -14,7 +14,6 @@ const BusinessCard = () => {
     facebook: '',
     instagram: '',
     whatsapp: '',
-    gmbProfile: '',
     socialMedia: {
       linkedin: '',
       twitter: '',
@@ -81,12 +80,6 @@ const BusinessCard = () => {
   const WhatsAppIcon = ({ size = 20, color = "#ffffff" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
       <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-    </svg>
-  );
-
-  const BusinessIcon = ({ size = 20, color = "#ffffff" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
   );
 
@@ -159,7 +152,6 @@ const BusinessCard = () => {
       (formData.facebook ? `URL;TYPE=Facebook:${formData.facebook}\n` : '') +
       (formData.instagram ? `URL;TYPE=Instagram:${formData.instagram}\n` : '') +
       (cleanWhatsApp ? `TEL;TYPE=WhatsApp:${cleanWhatsApp}\n` : '') +
-      (formData.gmbProfile ? `URL;TYPE=GoogleBusiness:${formData.gmbProfile}\n` : '') +
       'END:VCARD'
     );
   };
@@ -491,13 +483,12 @@ const BusinessCard = () => {
       ${formData.facebook ? `<a href="${formData.facebook}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></div><div><div class="contact-label">Facebook</div><div class="contact-value">Visit Facebook</div></div></a>` : ''}
       ${formData.instagram ? `<a href="${formData.instagram}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></div><div><div class="contact-label">Instagram</div><div class="contact-value">Visit Instagram</div></div></a>` : ''}
       ${formData.whatsapp ? `<a href="https://wa.me/${formData.whatsapp}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div><div><div class="contact-label">WhatsApp</div><div class="contact-value">Chat on WhatsApp</div></div></a>` : ''}
-      ${formData.gmbProfile ? `<a href="${formData.gmbProfile}" target="_blank" class="contact-item"><div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div><div class="contact-label">Google Business</div><div class="contact-value">View Profile</div></div></a>` : ''}
     </div>
     <div class="qr-section">
       <div class="qr-title">✨ Scan to Save Contact</div>
       <div class="qr-container"><canvas id="qr-code" width="200" height="200" style="display:block;margin:0 auto;"></canvas></div>
-      <div class="action-buttons">
-        <button class="btn" onclick="saveContact()">💾 Save Contact</button>
+      <div class="action-buttons" id="action-btns">
+        <button id="save-contact-btn" class="btn">💾 Save Contact</button>
         ${formData.phone ? `<a href="tel:${formData.phone}" class="btn">📞 Call Now</a>` : ''}
         ${formData.mapLink ? `<a href="${formData.mapLink}" target="_blank" class="btn">📍 Location</a>` : ''}
       </div>
@@ -509,46 +500,24 @@ const BusinessCard = () => {
       if (window.QRious) {
         new QRious({ element: document.getElementById('qr-code'), value: \`${vCardData}\`, size: 200, background: 'white', foreground: '${colors.primary}', level: 'M' });
       }
-    });
-    async function saveContact() {
-      const vcfData = \`${vCardData}\`;
-      const blob = new Blob([vcfData], { type: 'text/vcard' });
-      const fileName = '${formData.name.replace(/\s+/g, '_')}_Contact.vcf';
 
-      // Try Web Share API first — triggers native "Add to Contacts" on iOS/Android
-      if (navigator.share && navigator.canShare) {
-        const file = new File([blob], fileName, { type: 'text/vcard' });
-        if (navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              title: '${formData.name}',
-              files: [file]
-            });
-            return;
-          } catch (err) {
-            // User cancelled or share failed — fall through to direct open
-            if (err.name === 'AbortError') return;
-          }
+      document.getElementById('save-contact-btn').addEventListener('click', function() {
+        const vcf = \`${vCardData}\`;
+        // Use text/x-vcard MIME type — this is what iOS/Android recognise as a contact file
+        const blob = new Blob([vcf], { type: 'text/x-vcard' });
+        const url = URL.createObjectURL(blob);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        if (isIOS) {
+          // iOS Safari: navigate to the blob URL — triggers native "Add to Contacts" sheet
+          window.location.href = url;
+        } else {
+          // Android / Desktop: open in new tab — Android opens Contacts app, desktop downloads
+          window.open(url, '_blank');
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
         }
-      }
-
-      // On iOS Safari: open the vcf URL directly — iOS will prompt "Add to Contacts"
-      const url = URL.createObjectURL(blob);
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (isIOS) {
-        window.location.href = url;
-      } else {
-        // Android / Desktop fallback: open in new tab which triggers native handler
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        // No .download attribute — lets the OS handle the .vcf natively
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    }
+      });
+    });
   </script>
 </body>
 </html>`;
@@ -639,7 +608,6 @@ const BusinessCard = () => {
                   { label: 'Facebook URL', field: 'facebook', placeholder: 'https://facebook.com/yourprofile' },
                   { label: 'Instagram URL', field: 'instagram', placeholder: 'https://instagram.com/yourprofile' },
                   { label: 'WhatsApp Number', field: 'whatsapp', placeholder: 'Enter WhatsApp number' },
-                  { label: 'Google Business Profile', field: 'gmbProfile', placeholder: 'https://g.page/yourbusiness' },
                 ].map(({ label, field, placeholder }) => (
                   <div key={field}>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -761,19 +729,8 @@ const BusinessCard = () => {
                 </div>
               </a>
             )}
-            {formData.gmbProfile && (
-              <a href={formData.gmbProfile} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <BusinessIcon size={16} color="#fff" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>Google Business</div>
-                  <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>View Profile</div>
-                </div>
-              </a>
-            )}
             {!formData.phone && !formData.mapLink && !formData.facebook &&
-             !formData.instagram && !formData.whatsapp && !formData.gmbProfile && (
+             !formData.instagram && !formData.whatsapp && (
               <div className="text-center py-4 text-gray-400">
                 <p className="text-sm">Click Edit to add your contact information</p>
               </div>
