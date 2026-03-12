@@ -31,10 +31,10 @@ const BusinessCard = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [qrReady, setQrReady] = useState(false); // NEW: track QRious readiness
+  const [qrReady, setQrReady] = useState(false);
   const qrCanvasRef = useRef(null);
   const fileInputRef = useRef(null);
-  const qrScriptLoadedRef = useRef(false); // NEW: prevent double-load
+  const qrScriptLoadedRef = useRef(false);
 
   const fallbackImage = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100&q=80';
 
@@ -163,30 +163,23 @@ const BusinessCard = () => {
     );
   };
 
-  // FIX: Robust QR generation with retry logic for iOS
   const generateQRCode = (retryCount = 0) => {
     if (!window.QRious) {
-      if (retryCount < 10) {
-        setTimeout(() => generateQRCode(retryCount + 1), 300);
-      }
+      if (retryCount < 10) setTimeout(() => generateQRCode(retryCount + 1), 300);
       return;
     }
     if (!qrCanvasRef.current) {
-      if (retryCount < 10) {
-        setTimeout(() => generateQRCode(retryCount + 1), 300);
-      }
+      if (retryCount < 10) setTimeout(() => generateQRCode(retryCount + 1), 300);
       return;
     }
     try {
-      // FIX: Explicitly set canvas pixel dimensions before drawing (critical for iOS)
       const canvas = qrCanvasRef.current;
-      const size = 200;
-      canvas.width = size;
-      canvas.height = size;
+      canvas.width = 200;
+      canvas.height = 200;
       new window.QRious({
         element: canvas,
         value: generateVCardData(),
-        size: size,
+        size: 200,
         background: 'white',
         foreground: colors.primary,
         level: 'M'
@@ -197,34 +190,20 @@ const BusinessCard = () => {
     }
   };
 
-  // FIX: Load QRious script only once, with a stable onload that retries canvas draw
   useEffect(() => {
-    if (qrScriptLoadedRef.current) {
-      generateQRCode();
-      return;
-    }
+    if (qrScriptLoadedRef.current) { generateQRCode(); return; }
     const existing = document.querySelector('script[src*="qrious"]');
-    if (existing) {
-      qrScriptLoadedRef.current = true;
-      generateQRCode();
-      return;
-    }
+    if (existing) { qrScriptLoadedRef.current = true; generateQRCode(); return; }
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';
     script.async = true;
-    script.onload = () => {
-      qrScriptLoadedRef.current = true;
-      // FIX: Use requestAnimationFrame to ensure canvas is painted before drawing
-      requestAnimationFrame(() => generateQRCode());
-    };
+    script.onload = () => { qrScriptLoadedRef.current = true; requestAnimationFrame(() => generateQRCode()); };
     script.onerror = () => console.error('Failed to load QRious');
     document.head.appendChild(script);
   }, []);
 
-  // FIX: Re-generate QR whenever formData changes, but only after QRious is loaded
   useEffect(() => {
     if (window.QRious && qrCanvasRef.current) {
-      // FIX: Small delay ensures React has finished painting the canvas to DOM
       const timer = setTimeout(() => generateQRCode(), 100);
       return () => clearTimeout(timer);
     }
@@ -237,9 +216,7 @@ const BusinessCard = () => {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
-          const savedPhoto = data.photo && data.photo.startsWith('data:')
-            ? data.photo
-            : publicImagePath;
+          const savedPhoto = data.photo && data.photo.startsWith('data:') ? data.photo : publicImagePath;
           setFormData({ ...data, photo: savedPhoto });
           showNotification('Data loaded successfully!', 'success');
         } else {
@@ -267,16 +244,12 @@ const BusinessCard = () => {
     setSaving(true);
     try {
       const photoToSave = tempFormData.photo && tempFormData.photo.startsWith('data:')
-        ? tempFormData.photo
-        : (tempFormData.photo || 'default');
-
+        ? tempFormData.photo : (tempFormData.photo || 'default');
       const dataToSave = { ...tempFormData, photo: photoToSave };
       const docRef = doc(db, 'businessCards', 'komalDhawan');
       await setDoc(docRef, dataToSave);
-
       const displayPhoto = photoToSave.startsWith('data:') ? photoToSave : publicImagePath;
       setFormData({ ...tempFormData, photo: displayPhoto });
-
       closeEditModal();
       showNotification('Profile updated and saved to cloud!', 'success');
     } catch (error) {
@@ -287,9 +260,7 @@ const BusinessCard = () => {
     }
   };
 
-  const handleInputChange = (field, value) => {
-    setTempFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleInputChange = (field, value) => setTempFormData(prev => ({ ...prev, [field]: value }));
 
   const handlePhotoChange = (event) => {
     const file = event.target.files[0];
@@ -343,14 +314,20 @@ const BusinessCard = () => {
       const photoBase64 = await getImageBase64(currentPhoto);
       const vCardData = generateVCardData();
 
+      // Escape backticks and other special characters for template literal
+      const safeVCardData = vCardData
+        .replace(/\\/g, '\\\\')
+        .replace(/`/g, '\\`')
+        .replace(/\$/g, '\\$')
+        .replace(/\n/g, '\\n');
+
       const cardHTML = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>${formData.name} - Business Card</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -361,6 +338,7 @@ const BusinessCard = () => {
       align-items: center;
       justify-content: center;
       padding: 20px;
+      -webkit-text-size-adjust: 100%;
     }
     .business-card {
       background: #fff;
@@ -382,38 +360,14 @@ const BusinessCard = () => {
       position: relative;
       overflow: hidden;
     }
-    .header::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
-      animation: shimmer 4s ease-in-out infinite;
-    }
-    @keyframes shimmer {
-      0%, 100% { transform: rotate(0deg); }
-      50% { transform: rotate(180deg); }
-    }
-    .photo-wrapper {
-      position: relative;
-      display: inline-block;
-      margin-bottom: 16px;
-    }
+    .photo-wrapper { position: relative; display: inline-block; margin-bottom: 16px; }
     .photo {
-      width: 110px;
-      height: 110px;
-      border-radius: 50%;
-      border: 4px solid rgba(255,255,255,0.9);
-      object-fit: cover;
-      display: block;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      width: 110px; height: 110px; border-radius: 50%;
+      border: 4px solid rgba(255,255,255,0.9); object-fit: cover;
+      display: block; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
     }
     .photo-ring {
-      position: absolute;
-      inset: -8px;
-      border-radius: 50%;
+      position: absolute; inset: -8px; border-radius: 50%;
       border: 3px solid rgba(255,255,255,0.4);
       animation: pulse-ring 2s ease-in-out infinite;
     }
@@ -422,88 +376,60 @@ const BusinessCard = () => {
       50% { transform: scale(1.05); opacity: 0.8; }
     }
     .name {
-      font-family: 'Playfair Display', serif;
-      font-size: 26px;
-      font-weight: 900;
-      color: #ffffff;
-      margin-bottom: 6px;
-      letter-spacing: 1px;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      font-family: 'Playfair Display', serif; font-size: 26px;
+      font-weight: 900; color: #ffffff; margin-bottom: 6px;
+      letter-spacing: 1px; text-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
     .title { color: rgba(255,255,255,0.9); font-size: 15px; font-weight: 500; }
     .content { padding: 24px 20px; background: #fff; }
     .contact-item {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 13px 14px;
-      border-radius: 14px;
-      margin-bottom: 10px;
-      background: #fdf4fb;
-      border: 1px solid #f3e5f5;
-      transition: all 0.3s ease;
-      text-decoration: none;
+      display: flex; align-items: center; gap: 14px;
+      padding: 13px 14px; border-radius: 14px; margin-bottom: 10px;
+      background: #fdf4fb; border: 1px solid #f3e5f5;
+      transition: all 0.3s ease; text-decoration: none;
     }
     .contact-item:hover {
       background: linear-gradient(135deg, #fce4ec, #f3e5f5);
-      transform: translateX(4px);
-      box-shadow: 0 4px 16px rgba(233,30,140,0.15);
+      transform: translateX(4px); box-shadow: 0 4px 16px rgba(233,30,140,0.15);
     }
     .icon {
       background: linear-gradient(135deg, #E91E8C, #9C27B0);
-      padding: 10px;
-      border-radius: 12px;
-      min-width: 42px;
-      height: 42px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
+      padding: 10px; border-radius: 12px; min-width: 42px; height: 42px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
     .contact-label { font-size: 11px; color: #9C27B0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
     .contact-value { color: #1a1a2e; font-size: 14px; font-weight: 600; }
     .qr-section {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      padding: 28px 20px;
-      text-align: center;
+      padding: 28px 20px; text-align: center;
     }
     .qr-title { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; color: #FF6EC7; margin-bottom: 20px; }
     .qr-container {
-      background: white;
-      padding: 16px;
-      border-radius: 16px;
-      display: inline-block;
-      margin-bottom: 20px;
+      background: white; padding: 16px; border-radius: 16px;
+      display: inline-block; margin-bottom: 20px;
       box-shadow: 0 0 30px rgba(233,30,140,0.3);
+    }
+    #qr-code {
+      display: block;
+      width: 200px;
+      height: 200px;
+      margin: 0 auto;
     }
     .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
     .btn {
-      background: linear-gradient(135deg, #E91E8C, #9C27B0);
-      color: #fff;
-      border: none;
-      padding: 13px 16px;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 14px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #E91E8C, #9C27B0); color: #fff;
+      border: none; padding: 13px 16px; border-radius: 12px;
+      font-weight: 600; font-size: 14px; cursor: pointer;
+      transition: all 0.3s ease; text-decoration: none;
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; font-family: 'Poppins', sans-serif;
     }
     .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(233,30,140,0.4); }
     .footer {
-      text-align: center;
-      padding: 16px;
+      text-align: center; padding: 16px;
       background: linear-gradient(135deg, #E91E8C, #9C27B0, #FF6B6B);
-      font-family: 'Playfair Display', serif;
-      font-weight: 700;
-      font-size: 16px;
-      color: #fff;
-      letter-spacing: 1px;
+      font-family: 'Playfair Display', serif; font-weight: 700;
+      font-size: 16px; color: #fff; letter-spacing: 1px;
     }
   </style>
 </head>
@@ -528,10 +454,9 @@ const BusinessCard = () => {
     <div class="qr-section">
       <div class="qr-title">✨ Scan to Save Contact</div>
       <div class="qr-container">
-        <!-- FIX: Explicit width/height attributes are required for iOS canvas rendering -->
-        <canvas id="qr-code" width="200" height="200" style="display:block;width:200px;height:200px;margin:0 auto;"></canvas>
+        <canvas id="qr-code" width="200" height="200"></canvas>
       </div>
-      <div class="action-buttons" id="action-btns">
+      <div class="action-buttons">
         <button id="save-contact-btn" class="btn">💾 Save Contact</button>
         ${formData.phone ? `<a href="tel:${formData.phone}" class="btn">📞 Call Now</a>` : ''}
         ${formData.mapLink ? `<a href="${formData.mapLink}" target="_blank" class="btn">📍 Location</a>` : ''}
@@ -539,91 +464,156 @@ const BusinessCard = () => {
     </div>
     <div class="footer">✨ KAMYABI TALKS BY KD ✨</div>
   </div>
+
   <script>
-    // FIX: Robust iOS QR init — waits for both DOM paint and QRious to be ready
-    function initQR() {
+    // Immediately store vCard data for later use
+    var VCARD_DATA = \`${safeVCardData}\`;
+    
+    // QR Code generation function
+    function generateQRCode() {
+      console.log('Generating QR code...');
       var canvas = document.getElementById('qr-code');
-      if (!canvas || !window.QRious) {
-        setTimeout(initQR, 200);
+      if (!canvas) {
+        console.error('Canvas not found');
         return;
       }
-      try {
-        // FIX: Force canvas dimensions explicitly before drawing — iOS ignores CSS-only sizing
-        canvas.width = 200;
-        canvas.height = 200;
-        new QRious({
-          element: canvas,
-          value: \`${vCardData.replace(/`/g, '\\`')}\`,
-          size: 200,
-          background: 'white',
-          foreground: '${colors.primary}',
-          level: 'M'
-        });
-      } catch(e) {
-        console.error('QR error:', e);
+      
+      // Ensure canvas has explicit dimensions
+      canvas.width = 200;
+      canvas.height = 200;
+      
+      // Try multiple QR library approaches
+      if (typeof QRious !== 'undefined') {
+        try {
+          new QRious({
+            element: canvas,
+            value: VCARD_DATA,
+            size: 200,
+            background: 'white',
+            foreground: '${colors.primary}',
+            level: 'M'
+          });
+          console.log('QR code generated successfully with QRious');
+          return;
+        } catch (e) {
+          console.error('QRious error:', e);
+        }
       }
+      
+      // Fallback to manual QR generation if needed
+      fallbackQRGeneration(canvas);
     }
-
-    // FIX: Use both DOMContentLoaded and load events to cover all iOS timing scenarios
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() {
-        requestAnimationFrame(function() { setTimeout(initQR, 100); });
-      });
-    } else {
-      requestAnimationFrame(function() { setTimeout(initQR, 100); });
+    
+    // Manual QR code fallback (simplified - just shows a message)
+    function fallbackQRGeneration(canvas) {
+      console.log('Using fallback QR generation');
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 200, 200);
+      ctx.fillStyle = '${colors.primary}';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('QR Code', 100, 100);
+      ctx.fillText('(Click Save Contact)', 100, 120);
     }
-
-    window.addEventListener('load', function() {
-      // FIX: Second attempt on full page load as a safety net for slow iOS devices
-      setTimeout(initQR, 300);
-    });
-
-    document.getElementById('save-contact-btn').addEventListener('click', function() {
-      var vcf = \`${vCardData.replace(/`/g, '\\`')}\`;
-      var blob = new Blob([vcf], { type: 'text/x-vcard' });
+    
+    // Load QRious script
+    function loadQRious() {
+      if (typeof QRious !== 'undefined') {
+        generateQRCode();
+        return;
+      }
+      
+      var script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';
+      script.onload = function() {
+        console.log('QRious loaded successfully');
+        generateQRCode();
+      };
+      script.onerror = function() {
+        console.error('Failed to load QRious, using fallback');
+        generateQRCode(); // This will use fallback
+      };
+      document.head.appendChild(script);
+    }
+    
+    // Save contact function
+    function saveContact() {
+      var blob = new Blob([VCARD_DATA], { type: 'text/vcard' });
       var url = URL.createObjectURL(blob);
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-      if (isIOS) {
-        window.location.href = url;
-      } else {
-        window.open(url, '_blank');
-        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = '${formData.name.replace(/\s+/g, '_')}_contact.vcf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+    }
+    
+    // Initialize when page loads
+    function initialize() {
+      console.log('Page initialized');
+      
+      // Load QR library
+      loadQRious();
+      
+      // Setup save button
+      var saveBtn = document.getElementById('save-contact-btn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', saveContact);
       }
+      
+      // Retry QR generation after a delay (for iOS)
+      setTimeout(generateQRCode, 500);
+      setTimeout(generateQRCode, 1000);
+    }
+    
+    // Run initialization when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+      initialize();
+    }
+    
+    // Also run on window load
+    window.addEventListener('load', function() {
+      console.log('Window loaded');
+      setTimeout(generateQRCode, 100);
     });
   <\/script>
 </body>
 </html>`;
 
-      if (navigator.share) {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([], '')] })) {
         try {
           const blob = new Blob([cardHTML], { type: 'text/html' });
           const file = new File([blob], `${formData.name.replace(/\s+/g, '-')}-card.html`, { type: 'text/html' });
-          await navigator.share({ title: `${formData.name} - Business Card`, files: [file] });
+          await navigator.share({
+            title: `${formData.name} - Business Card`,
+            files: [file]
+          });
           showNotification('Business card shared successfully!', 'success');
           return;
         } catch (shareError) {
           console.log('Native share failed, opening card directly');
         }
       }
+      
+      // Fallback: open in new tab
       const blob = new Blob([cardHTML], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       showNotification('Interactive business card opened!', 'success');
     } catch (err) {
+      console.error('Error creating business card:', err);
       showNotification('Error creating business card', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const gradientStyle = {
-    background: 'linear-gradient(135deg, #E91E8C 0%, #9C27B0 60%, #FF6B6B 100%)'
-  };
-
-  const contactItemStyle = {
-    background: 'linear-gradient(135deg, #fce4ec, #f3e5f5)',
-    border: '1px solid #f8bbd0'
-  };
+  const gradientStyle = { background: 'linear-gradient(135deg, #E91E8C 0%, #9C27B0 60%, #FF6B6B 100%)' };
+  const contactItemStyle = { background: 'linear-gradient(135deg, #fce4ec, #f3e5f5)', border: '1px solid #f8bbd0' };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 md:p-6 lg:p-8 xl:p-10"
@@ -633,8 +623,7 @@ const BusinessCard = () => {
 
       {notification && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 sm:px-6 sm:py-3 rounded-lg text-white font-medium transition-all duration-300 text-sm sm:text-base ${
-          notification.type === 'success' ? 'bg-green-500' :
-          notification.type === 'error' ? 'bg-red-500' : 'bg-pink-600'
+          notification.type === 'success' ? 'bg-green-500' : notification.type === 'error' ? 'bg-red-500' : 'bg-pink-600'
         }`}>
           {notification.message}
         </div>
@@ -649,25 +638,18 @@ const BusinessCard = () => {
             <div className="p-4 sm:p-6 space-y-4">
               <div className="text-center">
                 <div className="relative inline-block">
-                  <img
-                    src={getImageSource(tempFormData.photo)}
-                    alt="Profile"
+                  <img src={getImageSource(tempFormData.photo)} alt="Profile"
                     className="w-20 h-20 sm:w-24 sm:h-24 rounded-full mx-auto border-4 object-cover"
-                    style={{ borderColor: colors.primary }}
-                    onError={handleImageError}
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
+                    style={{ borderColor: colors.primary }} onError={handleImageError} />
+                  <button onClick={() => fileInputRef.current?.click()}
                     className="absolute bottom-0 right-0 text-white p-1.5 sm:p-2 rounded-full shadow-lg transition-colors"
-                    style={{ background: colors.primary }}
-                  >
+                    style={{ background: colors.primary }}>
                     <EditIcon size={14} />
                   </button>
                   <input type="file" ref={fileInputRef} onChange={handlePhotoChange} accept="image/*" className="hidden" />
                 </div>
                 <p className="text-xs sm:text-sm text-gray-500 mt-2">Click camera icon to change photo</p>
               </div>
-
               <div className="space-y-4">
                 {[
                   { label: 'Name', field: 'name', placeholder: '' },
@@ -681,28 +663,20 @@ const BusinessCard = () => {
                 ].map(({ label, field, placeholder }) => (
                   <div key={field}>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{label}</label>
-                    <input
-                      type="text"
-                      value={tempFormData[field] || ''}
+                    <input type="text" value={tempFormData[field] || ''}
                       onChange={(e) => handleInputChange(field, e.target.value)}
                       placeholder={placeholder}
-                      className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2"
-                      style={{ focusRingColor: colors.primary }}
-                    />
+                      className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2" />
                   </div>
                 ))}
               </div>
-
               <div className="flex gap-2 sm:gap-3 pt-4">
                 <button onClick={closeEditModal} className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
                   Cancel
                 </button>
-                <button
-                  onClick={handleSaveEdit}
-                  disabled={saving}
+                <button onClick={handleSaveEdit} disabled={saving}
                   className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  style={gradientStyle}
-                >
+                  style={gradientStyle}>
                   <SaveIcon size={14} />
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -712,43 +686,29 @@ const BusinessCard = () => {
         </div>
       )}
 
-      {/* Main Card */}
       <div className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl mx-auto">
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden transition-all duration-300"
           style={{ boxShadow: '0 20px 60px rgba(233,30,140,0.25), 0 0 80px rgba(156,39,176,0.1)' }}>
 
-          {/* Header */}
           <div className="px-4 sm:px-5 py-6 sm:py-8 text-center relative overflow-hidden bg-white">
             <div className="absolute top-0 left-0 right-0 h-1" style={gradientStyle} />
             <div className="relative mb-3 inline-block">
-              <img
-                src={getImageSource(formData.photo)}
-                alt="Komal Dhawan"
+              <img src={getImageSource(formData.photo)} alt="Komal Dhawan"
                 className="w-32 h-32 sm:w-36 sm:h-36 rounded-full mx-auto object-cover"
-                style={{
-                  border: '4px solid',
-                  borderColor: colors.primary,
-                  boxShadow: `0 4px 20px rgba(233,30,140,0.25), 0 0 0 6px rgba(233,30,140,0.08)`
-                }}
-                onError={handleImageError}
-              />
+                style={{ border: '4px solid', borderColor: colors.primary, boxShadow: `0 4px 20px rgba(233,30,140,0.25), 0 0 0 6px rgba(233,30,140,0.08)` }}
+                onError={handleImageError} />
             </div>
             <h1 className="text-xl sm:text-2xl font-black mb-1 tracking-widest"
               style={{ fontFamily: "'Playfair Display', serif", background: 'linear-gradient(135deg, #E91E8C, #9C27B0)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               {formData.name}
             </h1>
-            {formData.title && (
-              <p className="text-sm sm:text-base font-medium" style={{ color: colors.textMuted }}>{formData.title}</p>
-            )}
+            {formData.title && <p className="text-sm sm:text-base font-medium" style={{ color: colors.textMuted }}>{formData.title}</p>}
           </div>
 
-          {/* Contacts */}
           <div className="px-3 sm:px-4 py-3 sm:py-4 bg-white space-y-2">
             {formData.phone && (
               <a href={`tel:${formData.phone}`} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <PhoneIcon size={16} color="#fff" />
-                </div>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}><PhoneIcon size={16} color="#fff" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>Phone</div>
                   <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>{formData.phone}</div>
@@ -757,9 +717,7 @@ const BusinessCard = () => {
             )}
             {formData.mapLink && (
               <a href={formData.mapLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <MapIcon size={16} color="#fff" />
-                </div>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}><MapIcon size={16} color="#fff" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>Location</div>
                   <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>View on Map</div>
@@ -768,9 +726,7 @@ const BusinessCard = () => {
             )}
             {formData.facebook && (
               <a href={formData.facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <FacebookIcon size={16} color="#fff" />
-                </div>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}><FacebookIcon size={16} color="#fff" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>Facebook</div>
                   <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>Visit Profile</div>
@@ -779,9 +735,7 @@ const BusinessCard = () => {
             )}
             {formData.instagram && (
               <a href={formData.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <InstagramIcon size={16} color="#fff" />
-                </div>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}><InstagramIcon size={16} color="#fff" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>Instagram</div>
                   <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>Visit Profile</div>
@@ -790,9 +744,7 @@ const BusinessCard = () => {
             )}
             {formData.whatsapp && (
               <a href={`https://wa.me/${formData.whatsapp}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <WhatsAppIcon size={16} color="#fff" />
-                </div>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}><WhatsAppIcon size={16} color="#fff" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>WhatsApp</div>
                   <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>Chat on WhatsApp</div>
@@ -801,41 +753,29 @@ const BusinessCard = () => {
             )}
             {formData.linkedin && (
               <a href={formData.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl no-underline transition-all duration-200 hover:shadow-md" style={contactItemStyle}>
-                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}>
-                  <LinkedInIcon size={16} color="#fff" />
-                </div>
+                <div className="p-2 rounded-lg flex items-center justify-center flex-shrink-0" style={gradientStyle}><LinkedInIcon size={16} color="#fff" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: colors.accent }}>LinkedIn</div>
                   <div className="text-sm font-semibold truncate" style={{ color: colors.primary }}>Visit LinkedIn</div>
                 </div>
               </a>
             )}
-            {!formData.phone && !formData.mapLink && !formData.facebook &&
-             !formData.instagram && !formData.whatsapp && !formData.linkedin && (
-              <div className="text-center py-4 text-gray-400">
-                <p className="text-sm">Click Edit to add your contact information</p>
-              </div>
+            {!formData.phone && !formData.mapLink && !formData.facebook && !formData.instagram && !formData.whatsapp && !formData.linkedin && (
+              <div className="text-center py-4 text-gray-400"><p className="text-sm">Click Edit to add your contact information</p></div>
             )}
           </div>
 
-          {/* QR Code Section */}
           <div className="px-3 sm:px-4 py-4 sm:py-5 text-center border-t border-pink-100"
             style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' }}>
             <h3 className="text-base font-bold mb-3" style={{ color: '#FF6EC7', fontFamily: "'Playfair Display', serif" }}>
               ✨ Scan to Save Contact
             </h3>
-            {/* FIX: Explicit width/height on wrapper + canvas prevents iOS zero-size canvas bug */}
-            <div className="bg-white p-3 rounded-xl inline-block mb-3"
-              style={{ boxShadow: '0 0 20px rgba(233,30,140,0.3)', width: 'fit-content' }}>
-              <canvas
-                ref={qrCanvasRef}
-                width={200}
-                height={200}
-                style={{ display: 'block', width: '160px', height: '160px' }}
-              />
+            <div className="bg-white p-3 rounded-xl inline-block mb-3" style={{ boxShadow: '0 0 20px rgba(233,30,140,0.3)', width: 'fit-content' }}>
+              <canvas ref={qrCanvasRef} width={200} height={200} style={{ display: 'block', width: '160px', height: '160px' }} />
             </div>
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <button onClick={openEditModal} className="text-white border-none px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-md"
+              <button onClick={openEditModal}
+                className="text-white border-none px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-md"
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,110,199,0.4)' }}>
                 <EditIcon size={13} color="#FF6EC7" />
                 <span style={{ color: '#FF6EC7' }}>Edit</span>
@@ -849,7 +789,6 @@ const BusinessCard = () => {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="px-4 py-3 text-center" style={gradientStyle}>
             <div className="text-white font-black text-sm sm:text-base tracking-widest"
               style={{ fontFamily: "'Playfair Display', serif", textShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
