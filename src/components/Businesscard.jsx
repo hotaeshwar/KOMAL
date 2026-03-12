@@ -31,12 +31,13 @@ const BusinessCard = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [qrReady, setQrReady] = useState(false); // NEW: track QRious readiness
   const qrCanvasRef = useRef(null);
   const fileInputRef = useRef(null);
+  const qrScriptLoadedRef = useRef(false); // NEW: prevent double-load
 
   const fallbackImage = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100&q=80';
 
-  // Influencer color scheme: rose, coral, fuchsia, purple
   const colors = {
     primary: '#E91E8C',
     primaryLight: '#FF6EC7',
@@ -115,15 +116,11 @@ const BusinessCard = () => {
     </svg>
   );
 
-  // FIX: getImageSource now properly handles base64 strings saved from Firestore
   const getImageSource = (imageData) => {
     if (!imageData) return publicImagePath;
     if (typeof imageData === 'string') {
-      // base64 data URL (uploaded by user and saved to Firestore)
       if (imageData.startsWith('data:')) return imageData;
-      // external URL
       if (imageData.startsWith('http')) return imageData;
-      // local public path
       if (imageData.startsWith('/')) return imageData;
     }
     return publicImagePath;
@@ -166,33 +163,73 @@ const BusinessCard = () => {
     );
   };
 
-  const generateQRCode = () => {
-    if (!qrCanvasRef.current || !window.QRious) return;
+  // FIX: Robust QR generation with retry logic for iOS
+  const generateQRCode = (retryCount = 0) => {
+    if (!window.QRious) {
+      if (retryCount < 10) {
+        setTimeout(() => generateQRCode(retryCount + 1), 300);
+      }
+      return;
+    }
+    if (!qrCanvasRef.current) {
+      if (retryCount < 10) {
+        setTimeout(() => generateQRCode(retryCount + 1), 300);
+      }
+      return;
+    }
     try {
+      // FIX: Explicitly set canvas pixel dimensions before drawing (critical for iOS)
+      const canvas = qrCanvasRef.current;
+      const size = 200;
+      canvas.width = size;
+      canvas.height = size;
       new window.QRious({
-        element: qrCanvasRef.current,
+        element: canvas,
         value: generateVCardData(),
-        size: 300,
+        size: size,
         background: 'white',
         foreground: colors.primary,
         level: 'M'
       });
+      setQrReady(true);
     } catch (error) {
       console.error('QR Code generation error:', error);
     }
   };
 
+  // FIX: Load QRious script only once, with a stable onload that retries canvas draw
   useEffect(() => {
+    if (qrScriptLoadedRef.current) {
+      generateQRCode();
+      return;
+    }
+    const existing = document.querySelector('script[src*="qrious"]');
+    if (existing) {
+      qrScriptLoadedRef.current = true;
+      generateQRCode();
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';
-    script.onload = () => generateQRCode();
+    script.async = true;
+    script.onload = () => {
+      qrScriptLoadedRef.current = true;
+      // FIX: Use requestAnimationFrame to ensure canvas is painted before drawing
+      requestAnimationFrame(() => generateQRCode());
+    };
+    script.onerror = () => console.error('Failed to load QRious');
     document.head.appendChild(script);
-    return () => { if (document.head.contains(script)) document.head.removeChild(script); };
   }, []);
 
-  useEffect(() => { if (window.QRious) generateQRCode(); }, [formData, colors.primary]);
+  // FIX: Re-generate QR whenever formData changes, but only after QRious is loaded
+  useEffect(() => {
+    if (window.QRious && qrCanvasRef.current) {
+      // FIX: Small delay ensures React has finished painting the canvas to DOM
+      const timer = setTimeout(() => generateQRCode(), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [formData]);
 
-  // FIX: On load, restore photo from Firestore — including base64 if it was saved
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -200,7 +237,6 @@ const BusinessCard = () => {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
-          // Restore saved photo (base64 or default path)
           const savedPhoto = data.photo && data.photo.startsWith('data:')
             ? data.photo
             : publicImagePath;
@@ -227,22 +263,17 @@ const BusinessCard = () => {
   const openEditModal = () => { setTempFormData({ ...formData }); setIsEditModalOpen(true); };
   const closeEditModal = () => { setIsEditModalOpen(false); setTempFormData({}); };
 
-  // FIX: Save actual photo data (base64 string) to Firestore instead of placeholder string
   const handleSaveEdit = async () => {
     setSaving(true);
     try {
-      // Determine what photo string to persist
-      // If it's a base64 data URL, save it directly to Firestore
-      // If it's a local path or default, save that path string
       const photoToSave = tempFormData.photo && tempFormData.photo.startsWith('data:')
-        ? tempFormData.photo   // actual base64 — persists across refreshes
+        ? tempFormData.photo
         : (tempFormData.photo || 'default');
 
       const dataToSave = { ...tempFormData, photo: photoToSave };
       const docRef = doc(db, 'businessCards', 'komalDhawan');
       await setDoc(docRef, dataToSave);
 
-      // Update local state with the saved data, resolving photo display correctly
       const displayPhoto = photoToSave.startsWith('data:') ? photoToSave : publicImagePath;
       setFormData({ ...tempFormData, photo: displayPhoto });
 
@@ -264,7 +295,6 @@ const BusinessCard = () => {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
-      // FIX: Store full base64 data URL in tempFormData so it gets saved to Firestore
       reader.onload = (e) => setTempFormData(prev => ({ ...prev, photo: e.target.result }));
       reader.readAsDataURL(file);
     }
@@ -320,7 +350,7 @@ const BusinessCard = () => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${formData.name} - Business Card</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"><\/script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -497,7 +527,10 @@ const BusinessCard = () => {
     </div>
     <div class="qr-section">
       <div class="qr-title">✨ Scan to Save Contact</div>
-      <div class="qr-container"><canvas id="qr-code" width="200" height="200" style="display:block;margin:0 auto;"></canvas></div>
+      <div class="qr-container">
+        <!-- FIX: Explicit width/height attributes are required for iOS canvas rendering -->
+        <canvas id="qr-code" width="200" height="200" style="display:block;width:200px;height:200px;margin:0 auto;"></canvas>
+      </div>
       <div class="action-buttons" id="action-btns">
         <button id="save-contact-btn" class="btn">💾 Save Contact</button>
         ${formData.phone ? `<a href="tel:${formData.phone}" class="btn">📞 Call Now</a>` : ''}
@@ -507,29 +540,57 @@ const BusinessCard = () => {
     <div class="footer">✨ KAMYABI TALKS BY KD ✨</div>
   </div>
   <script>
-    window.addEventListener('DOMContentLoaded', function() {
-      if (window.QRious) {
-        new QRious({ element: document.getElementById('qr-code'), value: \`${vCardData}\`, size: 200, background: 'white', foreground: '${colors.primary}', level: 'M' });
+    // FIX: Robust iOS QR init — waits for both DOM paint and QRious to be ready
+    function initQR() {
+      var canvas = document.getElementById('qr-code');
+      if (!canvas || !window.QRious) {
+        setTimeout(initQR, 200);
+        return;
       }
+      try {
+        // FIX: Force canvas dimensions explicitly before drawing — iOS ignores CSS-only sizing
+        canvas.width = 200;
+        canvas.height = 200;
+        new QRious({
+          element: canvas,
+          value: \`${vCardData.replace(/`/g, '\\`')}\`,
+          size: 200,
+          background: 'white',
+          foreground: '${colors.primary}',
+          level: 'M'
+        });
+      } catch(e) {
+        console.error('QR error:', e);
+      }
+    }
 
-      document.getElementById('save-contact-btn').addEventListener('click', function() {
-        const vcf = \`${vCardData}\`;
-        // Use text/x-vcard MIME type — this is what iOS/Android recognise as a contact file
-        const blob = new Blob([vcf], { type: 'text/x-vcard' });
-        const url = URL.createObjectURL(blob);
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
-        if (isIOS) {
-          // iOS Safari: navigate to the blob URL — triggers native "Add to Contacts" sheet
-          window.location.href = url;
-        } else {
-          // Android / Desktop: open in new tab — Android opens Contacts app, desktop downloads
-          window.open(url, '_blank');
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-        }
+    // FIX: Use both DOMContentLoaded and load events to cover all iOS timing scenarios
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        requestAnimationFrame(function() { setTimeout(initQR, 100); });
       });
+    } else {
+      requestAnimationFrame(function() { setTimeout(initQR, 100); });
+    }
+
+    window.addEventListener('load', function() {
+      // FIX: Second attempt on full page load as a safety net for slow iOS devices
+      setTimeout(initQR, 300);
     });
-  </script>
+
+    document.getElementById('save-contact-btn').addEventListener('click', function() {
+      var vcf = \`${vCardData.replace(/`/g, '\\`')}\`;
+      var blob = new Blob([vcf], { type: 'text/x-vcard' });
+      var url = URL.createObjectURL(blob);
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        window.location.href = url;
+      } else {
+        window.open(url, '_blank');
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+      }
+    });
+  <\/script>
 </body>
 </html>`;
 
@@ -568,10 +629,8 @@ const BusinessCard = () => {
     <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 md:p-6 lg:p-8 xl:p-10"
       style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
 
-      {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      {/* Notification */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 sm:px-6 sm:py-3 rounded-lg text-white font-medium transition-all duration-300 text-sm sm:text-base ${
           notification.type === 'success' ? 'bg-green-500' :
@@ -581,7 +640,6 @@ const BusinessCard = () => {
         </div>
       )}
 
-      {/* Edit Modal */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3 sm:p-4 md:p-6">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs sm:max-w-sm md:max-w-md max-h-[90vh] overflow-y-auto">
@@ -766,9 +824,15 @@ const BusinessCard = () => {
             <h3 className="text-base font-bold mb-3" style={{ color: '#FF6EC7', fontFamily: "'Playfair Display', serif" }}>
               ✨ Scan to Save Contact
             </h3>
-            <div className="bg-white p-3 rounded-xl inline-block mb-3 w-full max-w-[160px] sm:max-w-[200px]"
-              style={{ boxShadow: '0 0 20px rgba(233,30,140,0.3)' }}>
-              <canvas ref={qrCanvasRef} className="w-28 h-28 sm:w-40 sm:h-40 mx-auto block" style={{ display: 'block' }} />
+            {/* FIX: Explicit width/height on wrapper + canvas prevents iOS zero-size canvas bug */}
+            <div className="bg-white p-3 rounded-xl inline-block mb-3"
+              style={{ boxShadow: '0 0 20px rgba(233,30,140,0.3)', width: 'fit-content' }}>
+              <canvas
+                ref={qrCanvasRef}
+                width={200}
+                height={200}
+                style={{ display: 'block', width: '160px', height: '160px' }}
+              />
             </div>
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <button onClick={openEditModal} className="text-white border-none px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-300 flex items-center justify-center gap-2 hover:shadow-md"
